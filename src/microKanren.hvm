@@ -23,22 +23,32 @@
 (Stream.Unit state) = (Cons state Stream.Empty)
 
 
-// Bind : Stream -> (State -> Stream) -> Stream
 // bind is required in the implementation of conj.
 // When a goal constructed from conj is invoked, the goal g1
 // is invoked on the current state; the result of this invocation
 // is a nite stream (represented as a proper nite list).
-(Bind Nil         goal) = Nil
-(Bind (Cons x xs) goal) = (MPlus (goal x) (Bind xs goal))
 
-// MPlus : Stream -> Stream -> Stream
+// Bind : Stream -> (State -> Stream) -> Stream
+(Bind Nil         fn) = Nil
+(Bind (Cons x xs) fn) = (MPlus (fn x) (Bind xs fn))
+
+// MonadPlus
+// ---------
+// The MonadPlus interface provides two primitives, mzero and
+// mplus, for expressing backtracking computations.
+
 // The mplus operator is responsible for merging streams.
 // In a goal constructed from disj, the resulting stream
 // contains the states that result from success of either
 // of the two goals.
+
+// MPlus is a disjunction of goals
+// MPlus : Stream -> Stream -> Stream
 (MPlus stream          Nil    ) = stream
 (MPlus Nil              stream) = stream
-(MPlus (Cons x xs) stream)      = (Cons x (MPlus xs stream))
+(MPlus (Cons x xs) (Cons y ys)) = (Cons x (Cons y (MPlus xs ys)))
+// (Cons x (MPlus xs stream))
+
 
 // // Just a test (returns 2)
 // Main = (Head (Tail (Tail Nats)))
