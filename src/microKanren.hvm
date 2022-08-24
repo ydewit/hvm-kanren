@@ -44,9 +44,9 @@
 
 // MPlus is a disjunction of goals
 // MPlus : Stream -> Stream -> Stream
-(MPlus stream          Nil    ) = stream
-(MPlus Nil              stream) = stream
-(MPlus (Cons x xs) (Cons y ys)) = (Cons x (Cons y (MPlus xs ys)))
+(MPlus stream      Nil ) = list
+(MPlus Nil         list) = list
+(MPlus (Cons x xs) list) = (Cons x (MPlus list xs))
 // (Cons x (MPlus xs stream))
 
 
