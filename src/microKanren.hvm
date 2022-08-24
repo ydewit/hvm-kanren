@@ -44,11 +44,15 @@
 
 // MPlus is a disjunction of goals
 // MPlus : Stream -> Stream -> Stream
-(MPlus stream      Nil ) = list
+(MPlus list      Nil ) = list
 (MPlus Nil         list) = list
 (MPlus (Cons x xs) list) = (Cons x (MPlus list xs))
 // (Cons x (MPlus xs stream))
 
+// Take `n` items from the list
+(Take n Nil        ) = Nil
+(Take 0 _          ) = Nil
+(Take n (Cons x xs)) = (Cons x (Take (- n 1) xs))
 
 // // Just a test (returns 2)
 // Main = (Head (Tail (Tail Nats)))
@@ -98,11 +102,30 @@
 (Fresh fn) = λstate( (Fresh.Go fn state) )
     (Fresh.Go fn (State s c)) = ((fn (LVar c)) (State s (+ c 1)))
 
+(Fresh2 fn) = (λstate( (Fresh2.Go fn state) ))
+    (Fresh2.Go fn (State s c)) = ( (fn (LVar c) (LVar (+ c 1))) (State s (+ c 2)) )
+
+(Fresh3 fn) = (λstate( (Fresh3.Go fn state) ))
+    (Fresh3.Go fn (State s c)) = ( (fn (LVar c) (LVar (+ c 1)) (LVar (+ c 2))) (State s (+ c 3)) )
+
+
 // (Disj (State -> Stream) (State -> Stream)) : (State -> Stream)
 (Disj g1 g2) = λstate( (MPlus g1 state) (g2 state) )
 
 // (Conj (State -> Stream) (State -> Stream)) : (State -> Stream)
 (Conj g1 g2) = λstate( (Bind (g1 state) g2) )
+
+
+// A goal that succeeds.
+(Succeed) = (== 1 1)
+
+// A goal that fails
+(Fail) = (== 1 0)
+
+
+(RunMany n fn) = (Take n ((Fresh fn) (State.Empty)))
+
+(RunAll fn) = ((Fresh fn) (State.Empty))
 
 // TESTS
 // -----
@@ -144,4 +167,9 @@
     // ----------
     // (Test.Goal0) // diverges ...
     // ((call/fresh (lambda (q) (≡ q 5))) empty-state) ; #(0)5
-    ((Fresh λx( (Equal x 5) )) (State.Empty))
+    // ((Fresh λx( (Equal x 5) )) (State.Empty))
+    // ((Fresh2 λxλy(Equal y 5)) (State.Empty))
+    ((Fresh3 λxλyλz(Equal z 5)) (State.Empty))
+    // (RunMany 4 λx( (Equal x 5) ))
+    // (RunAll λx( (Equal x 5) ))
+    // (Run 2 λx( (Test.Goal.Fives x) )) -- diverges!!
