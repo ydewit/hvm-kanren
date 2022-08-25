@@ -1,3 +1,8 @@
+// x ∈ Var
+// s ∈ Symbol
+// b ∈ Bool
+// Term ::= x | s | b | [] | (Pair Term Term)
+
 // UTILS
 // -----
 
@@ -10,7 +15,7 @@
 
 // Holds the goal state comprised of the substitution list and the variable counter
 // (State.Empty) : (State Subst U32)
-(State.Empty) = (State Nil 0)
+(State.Empty) = (State [] 0)
 // (State.Unit Subst U32) : (State Subst U32)
 (State.Unit s c) = (State s c)
 
@@ -29,8 +34,12 @@
 // is a nite stream (represented as a proper nite list).
 
 // Bind : Stream -> (State -> Stream) -> Stream
-(Bind Nil         fn) = Nil
+(Bind []          fn) = []
 (Bind (Cons x xs) fn) = (MPlus (fn x) (Bind xs fn))
+// (Bind 0           fn) = 0
+// (Bind x           fn) = (fn x)
+// (Bind (Some n)    fn) = (fn n)
+// (Bind None        fn) =
 
 // MonadPlus
 // ---------
@@ -44,10 +53,13 @@
 
 // MPlus is a disjunction of goals
 // MPlus : Stream -> Stream -> Stream
-(MPlus list      Nil ) = list
-(MPlus Nil         list) = list
-(MPlus (Cons x xs) list) = (Cons x (MPlus list xs))
+(MPlus list        []  ) = list
+(MPlus []          list) = list
+(MPlus (Cons x xs) list) = (Cons x (MPlus list xs)) // invert list to interleave
 // (Cons x (MPlus xs stream))
+
+(Some n fn) = (fn n)
+(None fn) = (fn)
 
 // Take `n` items from the list
 (Take n Nil        ) = Nil
@@ -62,41 +74,53 @@
 // -----------
 
 // : List Binding
-(Subst.Unit var val) = (Subst.Extend Nil var val)
+(Subst.Unit var val) = (ExtSubst Nil var val)
 // subst: (s: List Binding) -> (var: LVar) -> (val: U32) -> List Binding
-(Subst.Extend s var val) = (Cons (Pair var val) s)
+(ExtSubst s var val) = (Cons (Pair var val) s)
+
+// #| Occurs: Var x Term x Subst -> Bool |#
+//
+// (define (occurs? x u s)
+//    (cond
+//        ((var? u) (eqv? x u))
+//        ((pair? u) (or (occurs? x (find (car u) s) s)
+//        (occurs? x (find (cdr u) s) s)))
+//        (else #f)))
+// (Occurs (LVar n) )
 
 // TODO check for circularity
 
-// Walk : LVar -> Subst -> (U32 -> <A>) (LVar -> <A>) -> <A>
-(Walk (LVar n) (Cons (Pair (LVar n2) val) xs)) = (If (== n n2) val (Walk (LVar n) xs))
-(Walk u        subst                         ) = u
+// Find : LVar -> Subst -> (U32 -> <A>) (LVar -> <A>) -> <A>
+(Find (LVar n) (Cons (Pair (LVar n2) val) xs)) = (If (== n n2) val (Find (LVar n) xs))
+(Find u        subst                         ) = u
 
-// UNIFICATION
-// -----------
-// Unify : (u: LVar) -> (v: LVar) -> Subst -> (someFn: Subst -> a) (nonFn: Subst -> a) -> Subst
-// (Unify u v s sFn nFn) = (Unify.Go (Walk u s λval(val) λvar(Nil)) (Walk v s λval(val) λvar(Nil)) s sFn nFn)
-//     (Unify.Go (Pair u1 u2) (Pair v1 v2) s sFn nFn) = (Unify u1 v1 s λsExt( (Unify u2 v2 sExt sFn nFn)) nFn)
-//     (Unify.Go (LVar u)     (LVar v)     s sFn nFn) = (If (== u v) s (Subst.Extend (LVar u) (LVar v) s))
-//     (Unify.Go (LVar u)     v            s sFn nFn) = (sFn (Subst.Extend (LVar u) v s))
-//     (Unify.Go u            (LVar v)     s sFn nFn) = (sFn (Subst.Extend (LVar v) u s))
-//     (Unify.Go u            v            s sFn nFn) = (If (== u v) (sFn s) (nFn s))
+// (define (unify u v s)
+//     (cond
+//         ((eqv? u v) s)
+//         ((var? u) (ext-s u v s))
+//         ((var? v) (unify v u s))
+//         ((and (pair? u) (pair? v))
+//             (let ((s (unify (find (car u) s) (find (car v) s) s)))
+//             (and s (unify (find (cdr u) s) (find (cdr v) s) s))))
+//         (else #f)))
+// Unify : Term ⨯ Term ⨯ Subst ⟶ Maybe Subst
+(Unify u v s tFn eFn) = (Unify.Go (Find u s) (Find v s) s tFn eFn)
+    (Unify.Go (Pair u1 u2) (Pair v1 v2) s thenFn failFn) = (Unify.Go (Find u1 s) (Find v1 s) s λs( (Unify.Go (Find u2 s) (Find v2 s) s λs(s) λs(0)) ) λuλv(0))
+    (Unify.Go (LVar u)     (LVar v)     s thenFn failFn) = (If (== u v) (thenFn s) (thenFn (ExtSubst s (LVar u) (LVar v))))
+    (Unify.Go (LVar u)     v            s thenFn failFn) = (thenFn (ExtSubst s (LVar u) v))
+    (Unify.Go u            (LVar v)     s thenFn failFn) = (Unify (LVar v) u s thenFn failFn) //  (ExtSubst s (LVar v) u)
+    (Unify.Go []          []            s thenFn failFn) = (thenFn s)
+    (Unify.Go (Cons u us) (Cons v vs)   s thenFn failFn) = (Unify.Go (Find u s) (Find v s) s λs( (Unify.Go (Find us s) (Find vs s) s λs(s) λs(0)) ) λuλv(0))
+    (Unify.Go u            v            s thenFn failFn) = (If (== u v) (thenFn s) (failFn u v)) // else False
 
-(Unify u v s) = (Unify.Go (Walk u s) (Walk v s) s)
-    (Unify.Go (Pair u1 u2) (Pair v1 v2) s) = (Unify u1 v1 s)
-    (Unify.Go (LVar u)     (LVar v)     s) = (If (== u v) s (Subst.Extend s (LVar u) (LVar v)))
-    (Unify.Go (LVar u)     v            s) = (Subst.Extend s (LVar u) v)
-    (Unify.Go u            (LVar v)     s) = (Subst.Extend s (LVar v) u)
-    (Unify.Go Nil          Nil          s) = Nil
-    (Unify.Go u            v            s) = (If (== u v) s Nil)
-
-
-// GOALS
-// -----
+// GOAL CONSTRUCTORS
+// -----------------
 
 // Equal LVar LVar) : (State -> Stream)
-(Equal var1 var2) = λstate( (Equal.Go var1 var2 state) )
-    (Equal.Go var1 var2 (State s c)) = (Stream.Unit (State.Unit (Unify var1 var2 s) c))
+(Equal u v) = λstate( (Equal.Go u v state) )
+    (Equal.Go u v (State s c)) = (Unify u v s λs( [(State s c)] ) λuλv([]))
+
+(Equal.Test1) = ((Equal 1 1) State.Empty)
 
 // (Fresh (LVar -> (State -> Stream)) : Stream
 (Fresh fn) = λstate( (Fresh.Go fn state) )
@@ -115,6 +139,8 @@
 // (Conj (State -> Stream) (State -> Stream)) : (State -> Stream)
 (Conj g1 g2) = λstate( (Bind (g1 state) g2) )
 
+// (Match (Cons g gs)) = λstate( (g state) )
+//     (Match.Go)
 
 // A goal that succeeds.
 (Succeed) = (== 1 1)
@@ -130,10 +156,10 @@
 // TESTS
 // -----
 
-(Test.Subst0) = Nil
+(Test.Subst0) = []
 (Test.Subst1) = (Subst.Unit (LVar 1) 10)
-(Test.Subst2) = (Subst.Extend Test.Subst1 (LVar 2) 20)
-(Test.Subst3) = (Subst.Extend Test.Subst2 (LVar 3) 30)
+(Test.Subst2) = (ExtSubst Test.Subst1 (LVar 2) 20)
+(Test.Subst3) = (ExtSubst Test.Subst2 (LVar 3) 30)
 
 (Test.State0) = (State.Empty)
 
@@ -148,20 +174,25 @@
     // (Test.Subst2) // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)]
     // (Test.Subst3) // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)]
 
-    // (Walk (LVar 0) Test.Subst0) // == (LVar 0)
-    // (Walk (LVar 1) Test.Subst0) // == (LVar 1)
-    // (Walk (LVar 1) Test.Subst1) // == 10
-    // (Walk (LVar 2) Test.Subst2) // == 20
+    // (Find (LVar 0) Test.Subst0) // == (LVar 0)
+    // (Find (LVar 1) Test.Subst0) // == (LVar 1)
+    // (Find (LVar 1) Test.Subst1) // == 10
+    // (Find (LVar 2) Test.Subst2) // == 20
 
-    // (Unify (LVar 1) (LVar 1) Nil)   // == []
-    // (Unify (LVar 1) (LVar 2) Nil)   // == (Pair (LVar 1) (LVar 2))]
-    // (Unify (LVar 1) (LVar 1) Test.Subst1)   // == [(Pair (LVar 1) 10)]
-    // (Unify (LVar 2) (LVar 2) Test.Subst2)   // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)]
-    // (Unify 2 4 Test.Subst3)                 // == []
+    // (Unify (LVar 1) (LVar 1) [])   // == [] there is nothing to unify since they are the same
+    // (Unify 10 (LVar 1) [])   // == [(Pair (LVar 1) 10)]
+    // (Unify (LVar 1) (LVar 2) Nil)   // == [(Pair (LVar 1) (LVar 2))] add new subst
+    // (Unify (LVar 1) (LVar 1) Test.Subst1)   // == [(Pair (LVar 1) 10)] no changes to substitution
+    // (Unify (LVar 2) (LVar 2) Test.Subst2)   // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)] -- no change to subst
+    // (Unify 2 4 Test.Subst3)                 // == 0 -- dont unify
+    // (Unify (Pair (LVar 4) 50) (Pair 40 (LVar 5)) [])                 // == [(Pair (LVar 5) 50), (Pair (LVar 4) 40)] add new subst
+    // (Unify [] [] Test.Subst3)                 // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)] -- subst unchanged
+    // (Unify [(LVar 4)] [40] [])                 // == [(Pair (LVar 4) 40)] add new subst
+    // (Unify [(LVar 4), (LVar 5)] [40, 50] [])                 // == [(Pair (LVar 4) 40)] add new subst
 
-    // (Stream.Unit (A))
-    // ((Equal (LVar 1) (LVar 1)) (State.Empty))
-    // (State.Empty)
+    // ((Equal (LVar 1) (LVar 1)) (State.Empty)) // Stream -- [(State [] 0)]
+    // ((Equal (LVar 1) 10) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
+    ((Equal 1 2) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
 
     // Test goals
     // ----------
@@ -169,7 +200,15 @@
     // ((call/fresh (lambda (q) (≡ q 5))) empty-state) ; #(0)5
     // ((Fresh λx( (Equal x 5) )) (State.Empty))
     // ((Fresh2 λxλy(Equal y 5)) (State.Empty))
-    ((Fresh3 λxλyλz(Equal z 5)) (State.Empty))
+    // ((Fresh3 λxλyλz(Equal z 5)) (State.Empty))
+    // ((Fresh3 λxλyλz(Conj (Equal x z) (Equal x z))) (State.Empty))
     // (RunMany 4 λx( (Equal x 5) ))
     // (RunAll λx( (Equal x 5) ))
-    // (Run 2 λx( (Test.Goal.Fives x) )) -- diverges!!
+    // (Run 2 λx( (Test.Goal.Fives x) )) // diverges!!
+    // (Equal.Test1)
+
+// Goal :: State ⟶ Stream
+// State :: Subst ⨯ Nat
+// Stream :: Mature | Immature
+// Mature :: () | State ⨯ Stream
+// Immature :: Unit ⟶ Stream
