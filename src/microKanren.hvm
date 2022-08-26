@@ -3,12 +3,19 @@
 // b ∈ Bool
 // Term ::= x | s | b | [] | (Pair Term Term)
 
+// Goal :: State ⟶ Stream
+// State :: Subst ⨯ Nat
+// Stream :: Mature | Immature
+// Mature :: () | State ⨯ Stream
+// Immature :: Unit ⟶ Stream
+
 // UTILS
 // -----
 
 // (If U32 a a) : a
-(If 0 t f) = f
 (If 1 t f) = t
+(If 0 t f) = f
+(If _ t f) = f // Anything other than 0 and 1 is false
 
 // STATE
 // -----
@@ -116,6 +123,8 @@
 // GOAL CONSTRUCTORS
 // -----------------
 
+// TODO Right now these goals are using direct recursion. We need to turn these into lazy (copattern) rules so that recursive goals
+
 // Equal LVar LVar) : (State -> Stream)
 (Equal u v) = λstate( (Equal.Go u v state) )
     (Equal.Go u v (State s c)) = (Unify u v s λs( [(State s c)] ) λuλv([]))
@@ -134,7 +143,7 @@
 
 
 // (Disj (State -> Stream) (State -> Stream)) : (State -> Stream)
-(Disj g1 g2) = λstate( (MPlus g1 state) (g2 state) )
+(Disj g1 g2) = λstate( (MPlus (g1 state) (g2 state)) )
 
 // (Conj (State -> Stream) (State -> Stream)) : (State -> Stream)
 (Conj g1 g2) = λstate( (Bind (g1 state) g2) )
@@ -149,66 +158,6 @@
 (Fail) = (== 1 0)
 
 
-(RunMany n fn) = (Take n ((Fresh fn) (State.Empty)))
+(RunN n fn) = (Take n ((Fresh fn) (State.Empty)))
 
-(RunAll fn) = ((Fresh fn) (State.Empty))
-
-// TESTS
-// -----
-
-(Test.Subst0) = []
-(Test.Subst1) = (Subst.Unit (LVar 1) 10)
-(Test.Subst2) = (ExtSubst Test.Subst1 (LVar 2) 20)
-(Test.Subst3) = (ExtSubst Test.Subst2 (LVar 3) 30)
-
-(Test.State0) = (State.Empty)
-
-// > (define (fives x) (disj (≡ x 5) (fives x)))
-// > ((call/fresh fives) empty-state)
-(Test.Goal0) = (Fresh λx( (Test.Goal.Fives x) ))
-    (Test.Goal.Fives x) = (Disj (Equal x 5) (Test.Goal.Fives x))
-
-(Main) =
-    // (Test.Subst0) // == []
-    // (Test.Subst1) // == [(Pair (LVar 1) 10)
-    // (Test.Subst2) // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)]
-    // (Test.Subst3) // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)]
-
-    // (Find (LVar 0) Test.Subst0) // == (LVar 0)
-    // (Find (LVar 1) Test.Subst0) // == (LVar 1)
-    // (Find (LVar 1) Test.Subst1) // == 10
-    // (Find (LVar 2) Test.Subst2) // == 20
-
-    // (Unify (LVar 1) (LVar 1) [])   // == [] there is nothing to unify since they are the same
-    // (Unify 10 (LVar 1) [])   // == [(Pair (LVar 1) 10)]
-    // (Unify (LVar 1) (LVar 2) Nil)   // == [(Pair (LVar 1) (LVar 2))] add new subst
-    // (Unify (LVar 1) (LVar 1) Test.Subst1)   // == [(Pair (LVar 1) 10)] no changes to substitution
-    // (Unify (LVar 2) (LVar 2) Test.Subst2)   // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)] -- no change to subst
-    // (Unify 2 4 Test.Subst3)                 // == 0 -- dont unify
-    // (Unify (Pair (LVar 4) 50) (Pair 40 (LVar 5)) [])                 // == [(Pair (LVar 5) 50), (Pair (LVar 4) 40)] add new subst
-    // (Unify [] [] Test.Subst3)                 // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)] -- subst unchanged
-    // (Unify [(LVar 4)] [40] [])                 // == [(Pair (LVar 4) 40)] add new subst
-    // (Unify [(LVar 4), (LVar 5)] [40, 50] [])                 // == [(Pair (LVar 4) 40)] add new subst
-
-    // ((Equal (LVar 1) (LVar 1)) (State.Empty)) // Stream -- [(State [] 0)]
-    // ((Equal (LVar 1) 10) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
-    ((Equal 1 2) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
-
-    // Test goals
-    // ----------
-    // (Test.Goal0) // diverges ...
-    // ((call/fresh (lambda (q) (≡ q 5))) empty-state) ; #(0)5
-    // ((Fresh λx( (Equal x 5) )) (State.Empty))
-    // ((Fresh2 λxλy(Equal y 5)) (State.Empty))
-    // ((Fresh3 λxλyλz(Equal z 5)) (State.Empty))
-    // ((Fresh3 λxλyλz(Conj (Equal x z) (Equal x z))) (State.Empty))
-    // (RunMany 4 λx( (Equal x 5) ))
-    // (RunAll λx( (Equal x 5) ))
-    // (Run 2 λx( (Test.Goal.Fives x) )) // diverges!!
-    // (Equal.Test1)
-
-// Goal :: State ⟶ Stream
-// State :: Subst ⨯ Nat
-// Stream :: Mature | Immature
-// Mature :: () | State ⨯ Stream
-// Immature :: Unit ⟶ Stream
+(RunAll fn) = ((Fresh fn) State.Empty)

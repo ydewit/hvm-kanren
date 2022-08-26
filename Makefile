@@ -1,12 +1,22 @@
 HVM := ../HVM/target/debug/hvm
 
-FILE := ./src/microKanren.hvm
+FILE := ./src/microKanren.hvm ./Main.hvm
 
-run:
-	$(HVM) run $(FILE)
+OUT := ./build/out.hvm
 
-debug:
-	$(HVM) debug $(FILE)
+run: $(OUT)
+	$(HVM) run $(OUT)
+
+debug: $(OUT)
+	$(HVM) debug $(OUT)
+
+$(OUT): $(FILE)
+	@echo $?
+	@mkdir -p ./build
+	@cat $(FILE) > $(OUT)
+
+clean:
+	rm -rf ./build
 
 info:
 	$(HVM)

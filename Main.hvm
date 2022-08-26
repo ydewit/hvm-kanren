@@ -1,0 +1,109 @@
+// PEANO
+// -----
+// (define (peano n)
+//  (disj
+//      (== n 'z)
+//      (call/fresh
+//          (λ (r)
+//              (conj
+//                  (== n `(s ,r))
+//                  (peano r))))))
+
+(Peano n) = (Disj
+                (Equal n Z)
+                (Fresh λr(
+                    // (Conj
+                        // (Equal n (Pair S r))
+                        (Peano r)
+                    // )
+                ))
+            )
+
+(Rec n) = (Fresh λr(Rec r))
+// (Double n) = (* n n)
+// (Main) = (Double 2)
+(Main) =
+    // (RunN 4 λq( (Peano q) ))
+    // (RunN 4 λq( (Rec q) ))
+
+    // (Test.Subst0) // == []
+    // (Test.Subst1) // == [(Pair (LVar 1) 10)
+    // (Test.Subst2) // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)]
+    // (Test.Subst3) // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)]
+
+    // (Find (LVar 0) Test.Subst0) // == (LVar 0)
+    // (Find (LVar 1) Test.Subst0) // == (LVar 1)
+    // (Find (LVar 1) Test.Subst1) // == 10
+    // (Find (LVar 2) Test.Subst2) // == 20
+
+    // (Unify (LVar 1) (LVar 1) [])   // == [] there is nothing to unify since they are the same
+    // (Unify 10 (LVar 1) [])   // == [(Pair (LVar 1) 10)]
+    // (Unify (LVar 1) (LVar 2) Nil)   // == [(Pair (LVar 1) (LVar 2))] add new subst
+    // (Unify (LVar 1) (LVar 1) Test.Subst1)   // == [(Pair (LVar 1) 10)] no changes to substitution
+    // (Unify (LVar 2) (LVar 2) Test.Subst2)   // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)] -- no change to subst
+    // (Unify 2 4 Test.Subst3)                 // == 0 -- dont unify
+    // (Unify (Pair (LVar 4) 50) (Pair 40 (LVar 5)) [])                 // == [(Pair (LVar 5) 50), (Pair (LVar 4) 40)] add new subst
+    // (Unify [] [] Test.Subst3)                 // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)] -- subst unchanged
+    // (Unify [(LVar 4)] [40] [])                 // == [(Pair (LVar 4) 40)] add new subst
+    // (Unify [(LVar 4), (LVar 5)] [40, 50] [])                 // == [(Pair (LVar 4) 40)] add new subst
+
+    // ((Equal (LVar 1) (LVar 1)) (State.Empty)) // Stream -- [(State [] 0)]
+    // ((Equal (LVar 1) 10) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
+    // ((Equal 1 2) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
+
+    // Test goals
+    // ----------
+    // (Test.Goal0) // diverges ...
+    // ((call/fresh (lambda (q) (≡ q 5))) empty-state) ; #(0)5
+    // ((Fresh λx( (Equal x (A 2)) )) (State.Empty))
+    // ((Fresh2 λxλy(Equal y 5)) (State.Empty))
+    // ((Fresh3 λxλyλz(Equal z 5)) (State.Empty))
+    // ((Fresh3 λxλyλz(Conj (Equal x z) (Equal x z))) (State.Empty))
+    (RunN 4 λx( (Equal x 5) ))
+    // (RunAll λx( (Equal x 5) ))
+    // (Run 2 λx( (Test.Goal.Fives x) )) // diverges!!
+    // (Equal.Test1)
+
+    // TODO test disj
+    //  ((disj
+    //      (call/fresh
+    //          (λ (x)
+    //              (== 'z x)))
+    //      (call/fresh
+    //          (λ (x)
+    //              (== '(s z) x))))
+    //     '(() . 0))
+    // '((((0 . z)) . 1) (((0 . (s z))) . 1))
+    // ((Disj
+    //     (Fresh λx( (Equal Z x)           ))
+    //     (Fresh λx( (Equal (Pair S Z) x)  ))
+    // ) State.Empty)
+    // ((Disj (Equal Z Y) (Equal Y Z)) State.Empty)
+
+    // TODO test conj
+    //  ((call/fresh
+    //      (λ (x)
+    //          (call/fresh
+    //              (λ (y)
+    //                (conj
+    //                  (== y x)
+    //                  (== 'z x))))))
+    //    '(() . 0))
+    // '((((0 . z) (1 . 0)) . 2))
+    // ((Fresh2 λxλy( (Conj (Equal y x) (Equal Z x) )) ) State.Empty) // [(State [(Pair (LVar 0) (Z)), (Pair (LVar 1) (LVar 0))] 2)]
+
+
+// TESTS
+// -----
+
+(Test.Subst0) = []
+(Test.Subst1) = (Subst.Unit (LVar 1) 10)
+(Test.Subst2) = (ExtSubst Test.Subst1 (LVar 2) 20)
+(Test.Subst3) = (ExtSubst Test.Subst2 (LVar 3) 30)
+
+(Test.State0) = (State.Empty)
+
+// > (define (fives x) (disj (≡ x 5) (fives x)))
+// > ((call/fresh fives) empty-state)
+(Test.Goal0) = (Fresh λx( (Test.Goal.Fives x) ))
+    (Test.Goal.Fives x) = (Disj (Equal x 5) (Test.Goal.Fives x))
