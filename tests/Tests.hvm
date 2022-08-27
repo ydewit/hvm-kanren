@@ -1,41 +1,41 @@
-// PEANO
-// -----
-// (define (peano n)
-//  (disj
-//      (== n 'z)
-//      (call/fresh
-//          (λ (r)
-//              (conj
-//                  (== n `(s ,r))
-//                  (peano r))))))
 
-(Peano n) = (Disj
-                (Equal n Z)
-                (Fresh λr(
-                    // (Conj
-                        // (Equal n (Pair S r))
-                        (Peano r)
-                    // )
-                ))
-            )
+(RunTests (List.cons t ts)) = (List.cons (RunTest t) (RunTests ts))
+(RunTests []          ) = []
 
-(Rec n) = (Fresh λr(Rec r))
-// (Double n) = (* n n)
-// (Main) = (Double 2)
+(RunTest (TestCase name test)) = (TestResult name test)
+
+(AssertEqual []               []              ) = (True)
+(AssertEqual []               y               ) = (False)
+(AssertEqual x                []              ) = (False)
+(AssertEqual (List.cons x xs) (List.cons y ys)) = (List.cons (AssertEqual x y) (AssertEqual xs ys))
+(AssertEqual (Pair x xv)      (Pair y yv)     ) = (AssertEqual [x,xv] [y,yv])
+(AssertEqual (LVar x)         (LVar y)        ) = (If (== x y) True False)
+(AssertEqual x                y               ) = (If (== x y) True False)
+
+// (ShowResults (List.cons r rs)) = (List.cons (ShowResult r) (ShowResults rs))
+// (ShowResults  []                = [])
+
+// (ShowResult (TestResult name result)) =
+
 (Main) =
-    // (RunN 4 λq( (Peano q) ))
-    // (RunN 4 λq( (Rec q) ))
+    let SUSBT0 = (Subst.Empty)
+    let SUBST1 = (Subst.Unit (LVar 1) 10)
+    let SUBST2 = (ExtSubst SUBST1 (LVar 2) 20)
+    let SUBST3 = (ExtSubst SUBST2 (LVar 3) 30)
 
-    // (Test.Subst0) // == []
-    // (Test.Subst1) // == [(Pair (LVar 1) 10)
-    // (Test.Subst2) // == [(Pair (LVar 2) 20), (Pair (LVar 1) 10)]
-    // (Test.Subst3) // == [(Pair (LVar 3) 30), (Pair (LVar 2) 20), (Pair (LVar 1) 10)]
+    (RunTests [
+        // Substitution
+        (TestCase "Test empty subst"     (AssertEqual Subst.Empty []))
+        (TestCase "Test simple subst"    (AssertEqual SUBST1      [(Pair (LVar 1) 10)]))
+        (TestCase "Test subst extension" (AssertEqual SUBST2      [(Pair (LVar 2) 20),(Pair (LVar 1) 10)]))
+        (TestCase "Test subst extension2"(AssertEqual SUBST3      [(Pair (LVar 3) 30),(Pair (LVar 2) 20),(Pair (LVar 1) 10)]))
 
-    // (Find (LVar 0) Test.Subst0) // == (LVar 0)
-    // (Find (LVar 1) Test.Subst0) // == (LVar 1)
-    // (Find (LVar 1) Test.Subst1) // == 10
-    // (Find (LVar 2) Test.Subst2) // == 20
+        (TestCase "Test find on empty subst" (AssertEqual (Find (LVar 0) SUBST0) (LVar 0)))
+        (TestCase "Test find on empty subst" (AssertEqual (Find (LVar 1) SUBST0) (LVar 1)))
+        (TestCase "Test find on empty subst" (AssertEqual (Find (LVar 1) SUBST1) 10))
+        (TestCase "Test find on empty subst" (AssertEqual (Find (LVar 2) SUBST2) 20))
 
+        // Unification
     // (Unify (LVar 1) (LVar 1) [])   // == [] there is nothing to unify since they are the same
     // (Unify 10 (LVar 1) [])   // == [(Pair (LVar 1) 10)]
     // (Unify (LVar 1) (LVar 2) Nil)   // == [(Pair (LVar 1) (LVar 2))] add new subst
@@ -47,19 +47,19 @@
     // (Unify [(LVar 4)] [40] [])                 // == [(Pair (LVar 4) 40)] add new subst
     // (Unify [(LVar 4), (LVar 5)] [40, 50] [])                 // == [(Pair (LVar 4) 40)] add new subst
 
+        // Goals
+
     // ((Equal (LVar 1) (LVar 1)) (State.Empty)) // Stream -- [(State [] 0)]
     // ((Equal (LVar 1) 10) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
     // ((Equal 1 2) (State.Empty)) // Stream -- [(State [(Pair (LVar 1) 10)] 0)]
 
-    // Test goals
-    // ----------
     // (Test.Goal0) // diverges ...
     // ((call/fresh (lambda (q) (≡ q 5))) empty-state) ; #(0)5
     // ((Fresh λx( (Equal x (A 2)) )) (State.Empty))
     // ((Fresh2 λxλy(Equal y 5)) (State.Empty))
     // ((Fresh3 λxλyλz(Equal z 5)) (State.Empty))
     // ((Fresh3 λxλyλz(Conj (Equal x z) (Equal x z))) (State.Empty))
-    (RunSome 4 λx( (Equal x 5) ))
+    // (RunMany 4 λx( (Equal x 5) ))
     // (RunAll λx( (Equal x 5) ))
     // (Run 2 λx( (Test.Goal.Fives x) )) // diverges!!
     // (Equal.Test1)
@@ -78,7 +78,6 @@
     //     (Fresh λx( (Equal Z x)           ))
     //     (Fresh λx( (Equal (Pair S Z) x)  ))
     // ) State.Empty)
-    // ((Disj (Equal Z Y) (Equal Y Z)) State.Empty)
 
     // TODO test conj
     //  ((call/fresh
@@ -92,18 +91,8 @@
     // '((((0 . z) (1 . 0)) . 2))
     // ((Fresh2 λxλy( (Conj (Equal y x) (Equal Z x) )) ) State.Empty) // [(State [(Pair (LVar 0) (Z)), (Pair (LVar 1) (LVar 0))] 2)]
 
+    ])
 
-// TESTS
-// -----
 
-(Test.Subst0) = []
-(Test.Subst1) = (Subst.Unit (LVar 1) 10)
-(Test.Subst2) = (ExtSubst Test.Subst1 (LVar 2) 20)
-(Test.Subst3) = (ExtSubst Test.Subst2 (LVar 3) 30)
-
-(Test.State0) = (State.Empty)
-
-// > (define (fives x) (disj (≡ x 5) (fives x)))
-// > ((call/fresh fives) empty-state)
-(Test.Goal0) = (Fresh λx( (Test.Goal.Fives x) ))
-    (Test.Goal.Fives x) = (Disj (Equal x 5) (Test.Goal.Fives x))
+// (Test.Goal0) = (Fresh λx( (Test.Goal.Fives x) ))
+//     (Test.Goal.Fives x) = (Disj (Equal x 5) (Test.Goal.Fives x))

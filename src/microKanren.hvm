@@ -12,7 +12,7 @@
 // UTILS
 // -----
 
-// (If U32 a a) : a
+// (If U60 a a) : a
 (If 1 t f) = t
 (If 0 t f) = f
 (If _ t f) = f // Anything other than 0 and 1 is false
@@ -21,18 +21,18 @@
 // -----
 
 // Holds the goal state comprised of the substitution list and the variable counter
-// (State.Empty) : (State Subst U32)
+// (State.Empty) : (State Subst U60)
 (State.Empty) = (State [] 0)
-// (State.Unit Subst U32) : (State Subst U32)
+// (State.Unit Subst U60) : (State Subst U60)
 (State.Unit s c) = (State s c)
 
 // STREAM
 // ------
 
-// (Stream.Empty) : List (State Subst U32)
+// (Stream.Empty) : List (State Subst U60)
 (Stream.Empty) = Nil
-// (Stream.Unit State) : List (State Subst U32)
-(Stream.Unit state) = (Cons state Stream.Empty)
+// (Stream.Unit State) : List (State Subst U60)
+(Stream.Unit state) = [state Stream.Empty]
 
 
 // bind is required in the implementation of conj.
@@ -41,8 +41,8 @@
 // is a nite stream (represented as a proper nite list).
 
 // Bind : Stream -> (State -> Stream) -> Stream
-(Bind []          fn) = []
-(Bind (Cons x xs) fn) = (MPlus (fn x) (Bind xs fn))
+(Bind []               fn) = []
+(Bind (List.cons x xs) fn) = (MPlus (fn x) (Bind xs fn))
 // (Bind 0           fn) = 0
 // (Bind x           fn) = (fn x)
 // (Bind (Some n)    fn) = (fn n)
@@ -60,104 +60,186 @@
 
 // MPlus is a disjunction of goals
 // MPlus : Stream -> Stream -> Stream
-(MPlus list        []  ) = list
-(MPlus []          list) = list
-(MPlus (Cons x xs) list) = (Cons x (MPlus list xs)) // invert list to interleave
-// (Cons x (MPlus xs stream))
+(MPlus list             []  ) = list
+(MPlus []               list) = list
+(MPlus (List.cons x xs) list) = (List.cons x (MPlus list xs)) // invert list to interleave
+// (List.cons x (MPlus xs stream))
 
 (Some n fn) = (fn n)
 (None fn) = (fn)
 
 // Take `n` items from the list
-(Take n Nil        ) = Nil
-(Take 0 _          ) = Nil
-(Take n (Cons x xs)) = (Cons x (Take (- n 1) xs))
+(Take n []              ) = []
+(Take 0 _               ) = []
+(Take n (List.cons x xs)) = (List.cons x (Take (- n 1) xs))
 
 // // Just a test (returns 2)
 // Main = (Head (Tail (Tail Nats)))
 
 
-// SUBSTITUION
-// -----------
+(Subst.Empty) = []
 
-// : List Binding
+// SUBST.UNIT
+// ----------
+//
+// Subst.Unit: List Binding
 (Subst.Unit var val) = (ExtSubst Nil var val)
-// subst: (s: List Binding) -> (var: LVar) -> (val: U32) -> List Binding
-(ExtSubst s var val) = (Cons (Pair var val) s)
+
+// EXTSUBST
+// --------
+// Extends a given substitution with a var and a term value.
+//
+// ExtSubst (s: Subst) (var: LVar) (val: Term) : Subst
+(ExtSubst s var val) = (List.cons (Pair var val) s)
 
 // #| Occurs: Var x Term x Subst -> Bool |#
-//
-// (define (occurs? x u s)
-//    (cond
-//        ((var? u) (eqv? x u))
-//        ((pair? u) (or (occurs? x (find (car u) s) s)
-//        (occurs? x (find (cdr u) s) s)))
-//        (else #f)))
 // (Occurs (LVar n) )
 
+
+// FIND
+// ----
+// Finds the value from a given substitution.
 // TODO check for circularity
+//
+// Find : LVar -> Subst -> (U60 -> <A>) (LVar -> <A>) -> <A>
+(Find (LVar n) (List.cons (Pair (LVar n2) val) xs)) = (If (== n n2) val (Find (LVar n) xs))
+(Find u        subst                              ) = u
 
-// Find : LVar -> Subst -> (U32 -> <A>) (LVar -> <A>) -> <A>
-(Find (LVar n) (Cons (Pair (LVar n2) val) xs)) = (If (== n n2) val (Find (LVar n) xs))
-(Find u        subst                         ) = u
-
-// (define (unify u v s)
-//     (cond
-//         ((eqv? u v) s)
-//         ((var? u) (ext-s u v s))
-//         ((var? v) (unify v u s))
-//         ((and (pair? u) (pair? v))
-//             (let ((s (unify (find (car u) s) (find (car v) s) s)))
-//             (and s (unify (find (cdr u) s) (find (cdr v) s) s))))
-//         (else #f)))
-// Unify : Term ⨯ Term ⨯ Subst ⟶ Maybe Subst
+// UNIFY
+// -----
+// Unify two terms based on a given substitution.
+//
+// Unify (u: Term) (v: Term) (s: Subst) (tFn : Subst -> <result>) (eFn: Term -> Term -> <result>) : <result>
 (Unify u v s tFn eFn) = (Unify.Go (Find u s) (Find v s) s tFn eFn)
-    (Unify.Go (Pair u1 u2) (Pair v1 v2) s thenFn failFn) = (Unify.Go (Find u1 s) (Find v1 s) s λs( (Unify.Go (Find u2 s) (Find v2 s) s λs(s) λs(0)) ) λuλv(0))
-    (Unify.Go (LVar u)     (LVar v)     s thenFn failFn) = (If (== u v) (thenFn s) (thenFn (ExtSubst s (LVar u) (LVar v))))
-    (Unify.Go (LVar u)     v            s thenFn failFn) = (thenFn (ExtSubst s (LVar u) v))
-    (Unify.Go u            (LVar v)     s thenFn failFn) = (Unify (LVar v) u s thenFn failFn) //  (ExtSubst s (LVar v) u)
-    (Unify.Go []          []            s thenFn failFn) = (thenFn s)
-    (Unify.Go (Cons u us) (Cons v vs)   s thenFn failFn) = (Unify.Go (Find u s) (Find v s) s λs( (Unify.Go (Find us s) (Find vs s) s λs(s) λs(0)) ) λuλv(0))
-    (Unify.Go u            v            s thenFn failFn) = (If (== u v) (thenFn s) (failFn u v)) // else False
+    (Unify.Go (Pair u1 u2)     (Pair v1 v2)     s thenFn failFn) = (Unify.Go (Find u1 s) (Find v1 s) s λs( (Unify.Go (Find u2 s) (Find v2 s) s λs(s) λs(0)) ) λuλv(0))
+    (Unify.Go (LVar u)         (LVar v)         s thenFn failFn) = (If (== u v) (thenFn s) (thenFn (ExtSubst s (LVar u) (LVar v))))
+    (Unify.Go (LVar u)         v                s thenFn failFn) = (thenFn (ExtSubst s (LVar u) v))
+    (Unify.Go u                (LVar v)         s thenFn failFn) = (Unify (LVar v) u s thenFn failFn) //  (ExtSubst s (LVar v) u)
+    (Unify.Go []               []               s thenFn failFn) = (thenFn s)
+    (Unify.Go (List.cons u us) (List.cons v vs) s thenFn failFn) = (Unify.Go (Find u s) (Find v s) s λs( (Unify.Go (Find us s) (Find vs s) s λs(s) λs(0)) ) λuλv(0))
+    (Unify.Go u                 v               s thenFn failFn) = (If (== u v) (thenFn s) (failFn u v)) // else False
 
-// GOAL CONSTRUCTORS
-// -----------------
 
-// TODO Right now these goals are using direct recursion. We need to turn these into lazy (copattern) rules so that recursive goals
-
-// Equal LVar LVar) : (State -> Stream)
+// EQUAL
+// -----
+// Constructs a goal that unifies two terms given a substitution.
+//
+// For example:
+// ```
+// (Equal x 12)
+//
+// ```
+// Equal (u: Term) (v: Term) : (State -> Stream)
 (Equal u v) = λstate( (Equal.Go u v state) )
-    (Equal.Go u v (State s c)) = (Unify u v s λs( [(State s c)] ) λuλv([]))
+    (Equal.Go u v (State s c)) =
+        (Unify u v s
+            λs(  [(State s c)]  ) // return the singleton stream
+            λuλv(  []  ))         // return an empty stream (failed to unify)
 
-(Equal.Test1) = ((Equal 1 1) State.Empty)
 
-// (Fresh (LVar -> (State -> Stream)) : Stream
+// FRESH
+// -----
+// Constructs a new fresh LVar that can be used in nested goals.
+//
+// For example:
+// ```
+// (Fresh λx(
+//      Succeed))
+// ```
+// Fresh (f: LVar -> Stream) : (State -> Stream)
 (Fresh fn) = λstate( (Fresh.Go fn state) )
     (Fresh.Go fn (State s c)) = ((fn (LVar c)) (State s (+ c 1)))
 
+// For example:
+// ```
+// (Fresh2 λxλy(
+//  (Equal y x) )
+// ```
+// Fresh2 (f: LVar -> LVar -> Stream) : (State -> Stream)
 (Fresh2 fn) = (λstate( (Fresh2.Go fn state) ))
     (Fresh2.Go fn (State s c)) = ( (fn (LVar c) (LVar (+ c 1))) (State s (+ c 2)) )
 
+// For example:
+// ```
+// (Fresh3 λxλyλz(
+//  (Conj
+//      (Equal y x)
+//      (Equal y z) ))
+// ```
+// Fresh3 (f: LVar -> LVar -> LVar -> Stream) : (State -> Stream)
 (Fresh3 fn) = (λstate( (Fresh3.Go fn state) ))
     (Fresh3.Go fn (State s c)) = ( (fn (LVar c) (LVar (+ c 1)) (LVar (+ c 2))) (State s (+ c 3)) )
 
-
-// (Disj (State -> Stream) (State -> Stream)) : (State -> Stream)
+// DISJ
+// ----
+// Constructs a disjoint goal based on two goals.
+//
+// For example:
+// ```
+// (Disj
+//     (Fresh λx( (Equal Z x)           ))
+//     (Fresh λx( (Equal (Pair S Z) x)  )) )
+// ```
+// or
+// ```
+// (Fresh λx(
+//      (Disj
+//          (Equal Z x)
+//          (Equal (Pair S Z) x)) )
+// ```
+// Disj (g1: State -> Stream) (g2: State -> Stream) : (State -> Stream)
 (Disj g1 g2) = λstate( (MPlus (g1 state) (g2 state)) )
 
-// (Conj (State -> Stream) (State -> Stream)) : (State -> Stream)
+// CONJ
+// ----
+// Constructs a conjunction goal based on two goals that will be
+// both be evaluated in any order (fair).
+//
+// For example:
+// ```
+// (Fresh2 λxλy(
+//      (Conj
+//          (Equal y x)
+//          (Equal Z x) )) )
+// ```
+// Conj (g1: State -> Stream) (g2: State -> Stream) : (State -> Stream)
 (Conj g1 g2) = λstate( (Bind (g1 state) g2) )
 
-// (Match (Cons g gs)) = λstate( (g state) )
-//     (Match.Go)
+// RUNSOME
+// ----
+// Creates a fresh query LVar and consume a bounded number of results from
+// the relational program.
+//
+// For example:
+// ```
+// (RunSome 4 λq(
+//      ... // add (Fresh ...) or (Disj ...) or (Conj ...) or (Equal ...)
+// )
+// ```
+// RunSome (n: U60) (fn: LVar -> (State -> Stream)) : (State -> Stream)
+(RunSome n fn) = (Take n ((Fresh fn) (State.Empty)))
 
-// A goal that succeeds.
-(Succeed) = (== 1 1)
-
-// A goal that fails
-(Fail) = (== 1 0)
-
-
-(RunN n fn) = (Take n ((Fresh fn) (State.Empty)))
-
+// RUNAll
+// ----
+// Creates a fresh query LVar and consume all results the relation program.
+//
+// For example:
+// (RunAll λq(
+//      ... // add (Fresh ...) or (Disj ...) or (Conj ...) or (Equal ...)
+// )
+// RunN (n: U60) (fn: LVar -> (State -> Stream)) : (State -> Stream)
 (RunAll fn) = ((Fresh fn) State.Empty)
+
+// SUCCEED
+// ------
+// A goal that always suceeds
+//
+// Succeed : (State -> Stream)
+(Succeed) = (Equal 1 1)
+
+// FAIL
+// ----
+// A goal that always fails
+//
+// Fail : (State -> Stream)
+(Fail) = (Equal 1 0)
